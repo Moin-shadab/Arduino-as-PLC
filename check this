@@ -1,0 +1,107 @@
+#include <Wire.h>
+#include <RTClib.h>
+
+RTC_DS3231 rtc;
+
+// EEPROM I2C Address
+#define EEPROM_I2C_ADDRESS 0x57
+#define EEPROM_SIZE 4096      // Total EEPROM size (bytes)
+#define BLOCK_START 2         // Start of wear-leveling block (skip position tracking bytes)
+#define ENTRY_SIZE 3          // Each RTC entry takes 3 bytes (hour, minute, second)
+#define MAX_ENTRIES (EEPROM_SIZE / ENTRY_SIZE) // Maximum entries
+#define MAX_BLOCK_ADDRESS (BLOCK_START + MAX_ENTRIES * ENTRY_SIZE - 1)
+
+uint16_t currentAddress = BLOCK_START;
+
+void setup() {
+  Wire.begin();
+  Serial.begin(9600);
+
+  if (!rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    while (1);
+  }
+
+  if (rtc.lostPower()) {
+    Serial.println("RTC lost power, setting to default time.");
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__))); // Set to compile time
+  }
+
+  // Restore the last write position
+  currentAddress = restoreWritePosition();
+}
+
+void loop() {
+  DateTime now = rtc.now();
+
+  // Save the RTC time to DS3231 EEPROM with wear-leveling
+  saveRTCToEEPROM(now);
+
+  delay(1000); // 1-second delay
+}
+
+/** Save RTC Data to DS3231 EEPROM with Wear-Leveling */
+void saveRTCToEEPROM(DateTime now) {
+  uint16_t addr = currentAddress;
+
+  // Write RTC data (hour, minute, second)
+  writeEEPROM(addr, now.hour());
+  writeEEPROM(addr + 1, now.minute());
+  writeEEPROM(addr + 2, now.second());
+
+  // Move to the next address
+  currentAddress += ENTRY_SIZE;
+
+  // Wrap around if block is full
+  if (currentAddress > MAX_BLOCK_ADDRESS) {
+    currentAddress = BLOCK_START;
+  }
+
+  // Save the current write position in the first two bytes of EEPROM
+  writeEEPROM(0, (currentAddress >> 8) & 0xFF); // High byte
+  writeEEPROM(1, currentAddress & 0xFF);       // Low byte
+
+  Serial.print("RTC Saved: ");
+  Serial.print(now.hour());
+  Serial.print(":");
+  Serial.print(now.minute());
+  Serial.print(":");
+  Serial.println(now.second());
+}
+
+/** Restore the Last Write Position from EEPROM */
+uint16_t restoreWritePosition() {
+  uint16_t addr = (readEEPROM(0) << 8) | readEEPROM(1); // Combine high and low bytes
+
+  // Validate the address
+  if (addr < BLOCK_START || addr > MAX_BLOCK_ADDRESS) {
+    addr = BLOCK_START; // Default to the start of the block
+  }
+
+  Serial.print("Restored Write Position: ");
+  Serial.println(addr);
+  return addr;
+}
+
+/** Write a Byte to DS3231 EEPROM */
+void writeEEPROM(uint16_t address, uint8_t data) {
+  Wire.beginTransmission(EEPROM_I2C_ADDRESS);
+  Wire.write((address >> 8) & 0xFF); // MSB of address
+  Wire.write(address & 0xFF);        // LSB of address
+  Wire.write(data);
+  Wire.endTransmission();
+
+  delay(5); // Allow time for write operation
+}
+
+/** Read a Byte from DS3231 EEPROM */
+uint8_t readEEPROM(uint16_t address) {
+  Wire.beginTransmission(EEPROM_I2C_ADDRESS);
+  Wire.write((address >> 8) & 0xFF); // MSB of address
+  Wire.write(address & 0xFF);        // LSB of address
+  Wire.endTransmission();
+
+  Wire.requestFrom(EEPROM_I2C_ADDRESS, 1);
+  while (Wire.available() == 0);
+  return Wire.read();
+}
