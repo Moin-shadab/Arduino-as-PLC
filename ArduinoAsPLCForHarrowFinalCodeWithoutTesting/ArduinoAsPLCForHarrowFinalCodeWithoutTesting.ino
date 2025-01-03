@@ -4,6 +4,21 @@
 #include <RTClib.h>
 LiquidCrystal_I2C lcd(0x27, 16, 2);  // Initialize the LCD
 RTC_DS3231 rtc;
+#define EEPROM_I2C_ADDRESS 0x57       // AT24C32 I2C address
+#define EEPROM_BLOCK_START 0x10       // Start of the wear-leveling block EEPROM_BLOCK_START_COUNTER
+#define EEPROM_BLOCK_SIZE 50          // Number of entries for wear-leveling EEPROM_BLOCK_SIZE_COUNTER
+#define EEPROM_CYCLE_SIZE 2           // Number of bytes required to store cycleCount EEPROM_CYCLE_SIZE_COUNTER
+#define EEPROM_POSITION_ADDRESS 0x00  // Address to store the current write position EEPROM_POSITION_ADDRESS_COUNTER
+
+#define EEPROM_BLOCK_START_RTC 0x100      // Start address for RTC time data
+#define EEPROM_BLOCK_SIZE_RTC 50          // Number of entries for RTC wear-leveling
+#define EEPROM_ENTRY_SIZE_RTC 3           // Number of bytes per RTC time entry (hour, minute, second)
+#define EEPROM_POSITION_ADDRESS_RTC 0x02  // Address to store the current write position for RTC
+
+
+uint16_t cycleCount = 0;  // Variable to store the current cycle count
+uint16_t totalCount = 0;  // Variable to store the total count
+
 const int openSettingsPin = 9;  // Pin for the button to open settings
 const int incrementPin = 10;    // Pin for the button to increment the blinking digit
 const int shiftPin = 11;        // Pin for the button to move the blinking cursor to the next digit
@@ -41,14 +56,14 @@ bool modeIsManual = false;
 bool selector2FirstPress = false;           // Track first press of selector2
 unsigned long selector2FirstPressTime = 0;  // Timer to track the delay between presses of selector2
 // Cycle Count
-int cycleCount = 0;
+// int cycleCount = 0;
 // Timing constants for Auto Mode
 unsigned long setPricePerBale = 0;
 unsigned long selector2Delay = 0;         // 6 seconds delay after the second press of selector2
 unsigned long buzzerDuration = 0;         // 3 seconds for buzzer relay
 unsigned long motorOnTimeInAuto = 0;      // 10 sec
 unsigned long hydraulicOnTimeInAuto = 0;  // 10 sec
-unsigned long totalCount = 0;
+// unsigned long totalCount = 0;
 unsigned long resetPressStartTime = 0;
 bool isResetPressed = false;
 const int resetTimeout = 3000;    // 3 seconds timeout (3000 ms)
@@ -56,6 +71,8 @@ unsigned long lastTimeSaved = 0;  // Variable to track when to save RTC time
 // end here
 void setup() {
   //here
+  Wire.begin();
+  // restoreCycleCount();
   // Initialize relay pins as output
   pinMode(hydraulicRelayPin, OUTPUT);
   pinMode(motorRelayPin, OUTPUT);
@@ -177,23 +194,7 @@ void loop() {
     }
   }
 
-  DateTime now = rtc.now();  // Get current time from RTC
-  // Calculate hours and minutes
-  int hours = now.hour();
-  int minutes = now.minute();
-  lcd.setCursor(10, 1);
-  lcd.print("H");
-  if (hours < 10) lcd.print("0");  // Add leading zero if hours < 10
-  lcd.print(hours);
-  lcd.print(":");
-  if (minutes < 10) lcd.print("0");  // Add leading zero if minutes < 10
-  lcd.print(minutes);
-  // Save RTC time to EEPROM every 2 minutes
-  unsigned long currentMillis = millis();
-  if (currentMillis - lastTimeSaved >= 60000) {  // Check if 2 minutes have passed (120000 ms)
-    saveRTCToEEPROM(now);
-    lastTimeSaved = currentMillis;  // Update the last saved time
-  }
+  saveTime();
 }
 
 // Load settings from EEPROM
@@ -204,7 +205,10 @@ void loadSettingsFromEEPROM() {
   selector2Delay = calculateDelay(8);
   buzzerDuration = calculateBuzzerDuration(9);
   // motorOnTimeInAuto = motorOnTimeInAuto - buzzerDuration ;
-  totalCount = EEPROM.read(10);  // Read total count from EEPROM
+  // totalCount = EEPROM.read(10);  // Read total count from EEPROM
+  // Restore the last cycle count from EEPROM
+  cycleCount = restoreCycleCount();
+  totalCount = cycleCount;  // Sync total count with cycle coun
 }
 
 // Handle setting values for other settings
@@ -561,8 +565,10 @@ void handleManualMode() {
     // Check if enough time has passed since the last valid press
     if (currentTime - lastHydraulicPressTime > 300) {  // Debounce time in milliseconds
       cycleCount++;
-      EEPROM.write(10, cycleCount);  // Save the updated cycle count to EEPROM
-      totalCount = EEPROM.read(10);
+      saveCycleCount();         // Save the updated cycle count using wear-leveling
+      totalCount = cycleCount;  // Use the updated cycle count
+      // EEPROM.write(10, cycleCount);  // Save the updated cycle count to EEPROM
+      // totalCount = EEPROM.read(10);
       // showDashboardCurrentCount();
       lastHydraulicPressTime = currentTime;  // Update the last press time
     }
@@ -628,9 +634,9 @@ void handleAutoMode() {
 
         // Increment the cycle count and save it to EEPROM
         cycleCount++;
-        EEPROM.write(10, cycleCount);  // Save the updated cycle count to EEPROM
-        totalCount = EEPROM.read(10);  // Read the total count back from EEPROM
-        showDashboardCurrentCount();   // Update the display with the new count
+        saveCycleCount();             // Save the updated cycle count using wear-leveling
+        totalCount = cycleCount;      // Use the updated cycle count
+        showDashboardCurrentCount();  // Update the display with the new count
 
         // Reset first press flag to start a new cycle for next press
         selector2FirstPress = false;
@@ -703,6 +709,7 @@ void showDashboardCurrentCount() {
   lcd.print(totalCount * setPricePerBale);  // Assuming you have setPricePerBale defined
 }
 
+// Reset counter and time to 0
 void restCountAndTime(int pin10State, int pin11State) {
   // Check if both pin 10 and pin 11 are shorted to GND (low state)
   if (pin10State == LOW && pin11State == LOW) {
@@ -714,17 +721,19 @@ void restCountAndTime(int pin10State, int pin11State) {
 
     // Check if 3 seconds have passed
     if (millis() - resetPressStartTime >= resetTimeout) {
-      // Set EEPROM value at address 10 to 0 (reset the value)
-      EEPROM.write(10, 0);
+      // Reset the cycle count in EEPROM using wear-leveling
+      resetCycleCountInEEPROM();
 
-      // After resetting EEPROM, update the totalCount variable
-      totalCount = EEPROM.read(10);  // Read the value back from EEPROM to ensure it's updated
-
-      // Optionally reset the reset value to 0 after updating EEPROM
-      int resetValue = 0;  // Reset the variable to 0
+      // Reset totalCount variable
+      totalCount = 0;  // Set to 0 after resetting EEPROM
+      cycleCount = 0;
       // Reset the RTC time to 00:00 (midnight)
       rtc.adjust(DateTime(2024, 1, 1, 0, 0, 0));  // Set date and time to January 1st, 00:00:00
-                                                  // Refresh the display
+
+      // Optionally save the RTC time to EEPROM if required
+      saveRTCToEEPROM(rtc.now());  // Save the current time (which is now reset) to EEPROM
+
+      // Refresh the display or take any necessary actions after reset
       showDashboardCurrentCount();
     }
   } else {
@@ -733,23 +742,165 @@ void restCountAndTime(int pin10State, int pin11State) {
   }
 }
 
+// Reset Cycle Count in EEPROM with wear-leveling
+void resetCycleCountInEEPROM() {
+  uint16_t writePosition = (readEEPROM(EEPROM_POSITION_ADDRESS) << 8) | readEEPROM(EEPROM_POSITION_ADDRESS + 1);
+
+  // Calculate the address for the current write
+  uint16_t address = EEPROM_BLOCK_START + (writePosition * EEPROM_CYCLE_SIZE);
+
+  // Set the cycle count to 0 (reset)
+  writeEEPROM(address, 0);      // Write 0 for cycle count
+  writeEEPROM(address + 1, 0);  // Write 0 for cycle count (2 bytes)
+
+  // Update the write position, wrapping around if necessary
+  writePosition = (writePosition + 1) % EEPROM_BLOCK_SIZE;
+  writeEEPROM(EEPROM_POSITION_ADDRESS, (writePosition >> 8) & 0xFF);  // High byte
+  writeEEPROM(EEPROM_POSITION_ADDRESS + 1, writePosition & 0xFF);     // Low byte
+  // Serial.println("Cycle count reset in EEPROM with wear-leveling.");
+  cycleCount = 0;
+  totalCount = 0;
+  showDashboardCurrentCount();
+  lcd.setCursor(0, 0);
+  lcd.print("                   ");
+  lcd.print(totalCount);  // Assuming totalCount is updated to the correct value
+  lcd.setCursor(0, 1);
+  lcd.print("           ");
+  // lcd.print(totalCount * setPricePerBale);  // Assuming you have setPricePerBale defined
+
+  // here
+  // uint16_t writePosition = (readEEPROM(EEPROM_POSITION_ADDRESS) << 8) | readEEPROM(EEPROM_POSITION_ADDRESS + 1);
+
+  // // Calculate the address for the current write
+  // uint16_t address = EEPROM_BLOCK_START + (writePosition * EEPROM_CYCLE_SIZE);
+
+  // // Write the cycleCount (2 bytes)
+  // writeEEPROM(address, (0 >> 8) & 0xFF);  // High byte
+  // writeEEPROM(address + 1, 0 & 0xFF);     // Low byte
+
+  // // Update the write position, wrapping around if necessary
+  // writePosition = (writePosition + 1) % EEPROM_BLOCK_SIZE;
+  // writeEEPROM(EEPROM_POSITION_ADDRESS, (writePosition >> 8) & 0xFF);  // High byte
+  // writeEEPROM(EEPROM_POSITION_ADDRESS + 1, writePosition & 0xFF);     // Low byte
+}
+
 // Function to restore the RTC time from EEPROM (if saved)
 void restoreRTCFromEEPROM() {
-  int hour = EEPROM.read(11);    // Read hour from EEPROM address 11
-  int minute = EEPROM.read(12);  // Read minute from EEPROM address 12
-  int second = EEPROM.read(13);  // Read second from EEPROM address 13
+  // Retrieve the last write position for RTC time
+  uint16_t writePosition = (readEEPROM(EEPROM_POSITION_ADDRESS_RTC) << 8) | readEEPROM(EEPROM_POSITION_ADDRESS_RTC + 1);
 
-  // If we have valid time values in EEPROM, set the RTC time accordingly
+  // Calculate the address of the last valid write
+  int16_t lastPosition = writePosition - 1;
+  if (lastPosition < 0) lastPosition = EEPROM_BLOCK_SIZE_RTC - 1;
+
+  uint16_t lastAddress = EEPROM_BLOCK_START_RTC + (lastPosition * EEPROM_ENTRY_SIZE_RTC);
+
+  // Read the last saved time from EEPROM
+  int hour = readEEPROM(lastAddress);
+  int minute = readEEPROM(lastAddress + 1);
+  int second = readEEPROM(lastAddress + 2);
+
+  // Validate and adjust RTC if the values are valid
   if (hour >= 0 && hour < 24 && minute >= 0 && minute < 60 && second >= 0 && second < 60) {
     rtc.adjust(DateTime(2024, 1, 1, hour, minute, second));  // Restore RTC time
+  } else {
   }
 }
 
-// Function to save the RTC time to EEPROM (starting from address 11)
 void saveRTCToEEPROM(DateTime now) {
-  int addr = 11;  // Starting EEPROM address after 10 (which is reserved for totalCount)
-  // Store the hour, minute, and second in EEPROM
-  EEPROM.write(addr, now.hour());        // Store hour at address 11
-  EEPROM.write(addr + 1, now.minute());  // Store minute at address 12
-  EEPROM.write(addr + 2, now.second());  // Store second at address 13
+  // Retrieve the current write position for RTC time
+  uint16_t writePosition = (readEEPROM(EEPROM_POSITION_ADDRESS_RTC) << 8) | readEEPROM(EEPROM_POSITION_ADDRESS_RTC + 1);
+
+  // Calculate the address for the current write
+  uint16_t address = EEPROM_BLOCK_START_RTC + (writePosition * EEPROM_ENTRY_SIZE_RTC);
+
+  // Write the current time to the calculated address
+  writeEEPROM(address, now.hour());        // Store hour
+  writeEEPROM(address + 1, now.minute());  // Store minute
+  writeEEPROM(address + 2, now.second());  // Store second
+
+  // Update the write position, wrapping around if necessary
+  writePosition = (writePosition + 1) % EEPROM_BLOCK_SIZE_RTC;
+  writeEEPROM(EEPROM_POSITION_ADDRESS_RTC, (writePosition >> 8) & 0xFF);  // High byte
+  writeEEPROM(EEPROM_POSITION_ADDRESS_RTC + 1, writePosition & 0xFF);     // Low byte
+}
+
+// Function to save cycle count with wear-leveling
+void saveCycleCount() {
+  // Retrieve the current write position
+  uint16_t writePosition = (readEEPROM(EEPROM_POSITION_ADDRESS) << 8) | readEEPROM(EEPROM_POSITION_ADDRESS + 1);
+
+  // Calculate the address for the current write
+  uint16_t address = EEPROM_BLOCK_START + (writePosition * EEPROM_CYCLE_SIZE);
+
+  // Write the cycleCount (2 bytes)
+  writeEEPROM(address, (cycleCount >> 8) & 0xFF);  // High byte
+  writeEEPROM(address + 1, cycleCount & 0xFF);     // Low byte
+
+  // Update the write position, wrapping around if necessary
+  writePosition = (writePosition + 1) % EEPROM_BLOCK_SIZE;
+  writeEEPROM(EEPROM_POSITION_ADDRESS, (writePosition >> 8) & 0xFF);  // High byte
+  writeEEPROM(EEPROM_POSITION_ADDRESS + 1, writePosition & 0xFF);     // Low byte
+}
+
+// Function to write a byte to AT24C32 EEPROM
+void writeEEPROM(uint16_t address, uint8_t data) {
+  Wire.beginTransmission(EEPROM_I2C_ADDRESS);
+  Wire.write((address >> 8) & 0xFF);  // MSB of address
+  Wire.write(address & 0xFF);         // LSB of address
+  Wire.write(data);
+  Wire.endTransmission();
+  delay(5);  // Allow time for the write operation
+}
+
+// Function to read a byte from AT24C32 EEPROM
+uint8_t readEEPROM(uint16_t address) {
+  Wire.beginTransmission(EEPROM_I2C_ADDRESS);
+  Wire.write((address >> 8) & 0xFF);  // MSB of address
+  Wire.write(address & 0xFF);         // LSB of address
+  Wire.endTransmission();
+  Wire.requestFrom(EEPROM_I2C_ADDRESS, 1);
+  while (!Wire.available())
+    ;
+  return Wire.read();
+}
+
+uint16_t restoreCycleCount() {
+  // Retrieve the last write position
+  uint16_t writePosition = (readEEPROM(EEPROM_POSITION_ADDRESS) << 8) | readEEPROM(EEPROM_POSITION_ADDRESS + 1);
+
+  // Calculate the address of the last valid write
+  int16_t lastPosition = writePosition - 1;
+  if (lastPosition < 0) lastPosition = EEPROM_BLOCK_SIZE - 1;
+
+  uint16_t lastAddress = EEPROM_BLOCK_START + (lastPosition * EEPROM_CYCLE_SIZE);
+
+  // Read the last saved cycle count
+  uint8_t highByte = readEEPROM(lastAddress);
+  uint8_t lowByte = readEEPROM(lastAddress + 1);
+  uint16_t restoredCount = (highByte << 8) | lowByte;
+
+  // Serial.print("Restored from Address: ");
+  // Serial.println(lastAddress, HEX);
+  return restoredCount;
+}
+
+void saveTime(){
+    DateTime now = rtc.now();  // Get current time from RTC
+  // Calculate hours and minutes
+  int hours = now.hour();
+  int minutes = now.minute();
+  lcd.setCursor(10, 1);
+  lcd.print("H");
+  if (hours < 10) lcd.print("0");  // Add leading zero if hours < 10
+  lcd.print(hours);
+  lcd.print(":");
+  if (minutes < 10) lcd.print("0");  // Add leading zero if minutes < 10
+  lcd.print(minutes);
+  // Save RTC time to EEPROM every some sec
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastTimeSaved >= 60000) {  // Check if 2 minutes have passed (120000 ms)
+    saveRTCToEEPROM(now);
+    lastTimeSaved = currentMillis;  // Update the last saved time
+  }
 }
