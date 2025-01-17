@@ -316,7 +316,8 @@ void handleStartMode() {
   digitalWrite(MainMotorRelayA2Pin, HIGH);            // Set A2 to LOW when start mode is entered
 
   // Check for metal detection using the PNP sensor pin
-  if (digitalRead(PNP_SENSOR_PIN) == HIGH) {  // Metal detected
+  // if (digitalRead(PNP_SENSOR_PIN) == HIGH) {  // Metal detected
+  if (analogRead(PNP_SENSOR_PIN) > (3.0 / 5.0) * 1023) {  // Metal detected
     metalDetected = true;
   }
 
