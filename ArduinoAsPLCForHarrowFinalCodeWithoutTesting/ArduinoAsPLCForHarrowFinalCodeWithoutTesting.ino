@@ -15,7 +15,6 @@ RTC_DS3231 rtc;
 #define EEPROM_ENTRY_SIZE_RTC 3           // Number of bytes per RTC time entry (hour, minute, second)
 #define EEPROM_POSITION_ADDRESS_RTC 0x02  // Address to store the current write position for RTC
 
-
 uint16_t cycleCount = 0;  // Variable to store the current cycle count
 uint16_t totalCount = 0;  // Variable to store the total count
 
