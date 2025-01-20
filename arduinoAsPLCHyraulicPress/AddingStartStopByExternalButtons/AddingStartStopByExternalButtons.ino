@@ -12,8 +12,8 @@ const int BACKLIGHT = 10;
 const int BUTTON_PIN = A0;  // Button connected to A0 pin
 #define PNP_SENSOR_PIN A1
 // Relay pin definitions
-const int PumpCloseRelay = 2;
-const int PumpOpenRelay = 3;
+const int RELAY1_PIN = 2;
+const int RELAY2_PIN = 3;
 // Initialize the LCD with the interface pins
 LiquidCrystal lcd(LCD_RS, LCD_ENABLE, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
 // Button value thresholds
@@ -27,9 +27,9 @@ bool inSetR3Mode = false;
 bool inStartMode = false;  // New flag for Start mode
 bool isOff = false;
 bool buttonPressed = false;
-float SetPumpOnTime = 0.0;     // Time for Relay 1
+float setR1Time = 0.0;     // Time for Relay 1
 float setDelayTime = 0.0;  // Time for Delay 
-float SetPumpOfTime = 0.0;     // Time for Relay 2
+float setR3Time = 0.0;     // Time for Relay 2
 float stepSize = 0.1;      // Increment/Decrement step size
 unsigned long relay1StartTime = 0;
 unsigned long relay2DelayTime = 0;
@@ -40,77 +40,77 @@ bool flag = false;                       // Track if Relay 2 is active
 unsigned long buttonPressStartTime = 0;  // Timer for long press
 bool longPressDetected = false;          // Flag for long press
 unsigned long relayDelayStartTime = 0;   // Timer for delay before Relay 2 activates
-const int MainMotorbuttonDOne = 1;       // D1 pin for the external button
+const int EXTERNAL_BUTTON_PIN = 1;       // D1 pin for the external button
 float previousR1Time = -1.0;             // Initialize with a value that's unlikely to match the default value
 // EEPROM addresses for saving times
-const int EEPROM_ADDR_PUMP_ON_TIME = 0;
+const int EEPROM_ADDR_R1_TIME = 0;
 const int EEPROM_ADDR_DELAY_TIME = 4;  // Different EEPROM address for Set R2
-const int EEPROM_ADDR_PUMP_OFF_TIME = 8;  // Different EEPROM address for Set R2
-const int MainMotorRelayA2Pin = A2;              // Pin A2 for controlling an external device
+const int EEPROM_ADDR_R3_TIME = 8;  // Different EEPROM address for Set R2
+const int A2_PIN = A2;              // Pin A2 for controlling an external device
 // Menu items in the main menu
 char* menuItems[2] = { "1: Settings" };  // Add Settings option
 char* settingItems[4] = { "Press. C Time", "Delay Time", "Press. O Time", "Back" };
 int currentSettingSelection = 0;
 bool isCycleRunning = false;  // Flag to track if the cycle is running
-const int GarrariMotorButtonDzero = 0;         // Pin D0 to detect the short circuit
-const int GarrariMotorRelayA3Pin = A3;        // Pin A3 to toggle between HIGH and LOW
-bool previousD0State = LOW;  // To store the previous state of D0
+const int D0_PIN = 0;         // Pin D0 to detect the short circuit
+const int A3_PIN = A3;        // Pin A3 to toggle between HIGH and LOW
+bool previousD0State = HIGH;  // To store the previous state of D0
 bool currentStateA3 = LOW;   // The current state of A3 (starting as LOW)
 
 void setup() {
   // Serial.begin(9600);  // Initialize serial communication
   lcd.begin(16, 2);
   pinMode(BACKLIGHT, OUTPUT);
-  digitalWrite(BACKLIGHT, LOW);
-  pinMode(PumpCloseRelay, OUTPUT);
-  pinMode(PumpOpenRelay, OUTPUT);
+  digitalWrite(BACKLIGHT, HIGH);
+  pinMode(RELAY1_PIN, OUTPUT);
+  pinMode(RELAY2_PIN, OUTPUT);
   pinMode(PNP_SENSOR_PIN, INPUT);              // Set PNP sensor pin as input
-  pinMode(MainMotorbuttonDOne, INPUT_PULLUP);  // External button pin (with internal pull-up resistor)
-  pinMode(MainMotorRelayA2Pin, OUTPUT);
-  digitalWrite(MainMotorRelayA2Pin, LOW);  // A2 pin set as output
-  digitalWrite(PumpCloseRelay, LOW);
-  digitalWrite(PumpOpenRelay, LOW);
-  pinMode(GarrariMotorButtonDzero, INPUT_PULLUP);         // Set D0 as an input with pull-up resistor enabled
-  pinMode(GarrariMotorRelayA3Pin, OUTPUT);               // Set A3 as an output
-  digitalWrite(GarrariMotorRelayA3Pin, currentStateA3);  // Initialize A3 to LOW
+  pinMode(EXTERNAL_BUTTON_PIN, INPUT_PULLUP);  // External button pin (with internal pull-up resistor)
+  pinMode(A2_PIN, OUTPUT);
+  digitalWrite(A2_PIN, LOW);  // A2 pin set as output
+  digitalWrite(RELAY1_PIN, LOW);
+  digitalWrite(RELAY2_PIN, LOW);
+  pinMode(D0_PIN, INPUT_PULLUP);         // Set D0 as an input with pull-up resistor enabled
+  pinMode(A3_PIN, OUTPUT);               // Set A3 as an output
+  digitalWrite(A3_PIN, currentStateA3);  // Initialize A3 to LOW
   // Scroll text "AUMAUTOMATION ENGINEERING" for 2 seconds
-  // lcd.clear();
-  // lcd.print("AUMAUTOMATION Engg.");
+  lcd.clear();
+  lcd.print("AUMAUTOMATION Engg.");
   
   // Scroll the text from right to left
-  for (int i = 0; i < 16 + strlen("AUMAUTOMATION ENGINEERING"); i++) {
-    lcd.scrollDisplayLeft();  // Scroll the text
-    delay(300);  // Adjust the speed of scrolling (increase or decrease the delay)
-  }
-  lcd.clear();
+  // for (int i = 0; i < 16 + strlen("AUMAUTOMATION ENGINEERING"); i++) {
+  //   lcd.scrollDisplayLeft();  // Scroll the text
+  //   delay(300);  // Adjust the speed of scrolling (increase or decrease the delay)
+  // }
+  
   // Wait for 2 seconds after the scrolling is done
-  // delay(1000);  // Wait for 2 seconds
+  delay(1000);  // Wait for 2 seconds
   // Load saved times from EEPROM with a default value fallback
-  EEPROM.get(EEPROM_ADDR_PUMP_ON_TIME, SetPumpOnTime);
+  EEPROM.get(EEPROM_ADDR_R1_TIME, setR1Time);
   EEPROM.get(EEPROM_ADDR_DELAY_TIME, setDelayTime);
-  EEPROM.get(EEPROM_ADDR_PUMP_OFF_TIME, SetPumpOfTime);
+  EEPROM.get(EEPROM_ADDR_R3_TIME, setR3Time);
   // If R1 or R2 time are uninitialized, assign default values
-  if (isnan(SetPumpOnTime) || SetPumpOnTime < 0.0 || SetPumpOnTime > 99.9) {
-    SetPumpOnTime = 0.0;
+  if (isnan(setR1Time) || setR1Time < 0.0 || setR1Time > 99.9) {
+    setR1Time = 0.0;
   }
   if (isnan(setDelayTime) || setDelayTime < 0.0 || setDelayTime > 99.9) {
     setDelayTime = 0.0;
   }
-  if (isnan(SetPumpOfTime) || SetPumpOfTime < 0.0 || SetPumpOfTime > 99.9) {
-    SetPumpOfTime = 0.0;
+  if (isnan(setR3Time) || setR3Time < 0.0 || setR3Time > 99.9) {
+    setR3Time = 0.0;
   }
   displayMenu();
 }
 
 void loop() {
   int buttonValue = analogRead(BUTTON_PIN);
-  int externalButtonState = digitalRead(MainMotorbuttonDOne);  // Read external button state (D1)
-  bool currentD0State = digitalRead(GarrariMotorButtonDzero);                   // Read the current state of D0
+  int externalButtonState = digitalRead(EXTERNAL_BUTTON_PIN);  // Read external button state (D1)
+  bool currentD0State = digitalRead(D0_PIN);                   // Read the current state of D0
   // Check if D0 is being shorted to GND (i.e., D0 goes LOW)
   if (previousD0State == HIGH && currentD0State == LOW) {
     // D0 was just shorted, toggle A3
     currentStateA3 = !currentStateA3;      // Toggle the state of A3
-    digitalWrite(GarrariMotorRelayA3Pin, currentStateA3);  // Apply the new state to A3
+    digitalWrite(A3_PIN, currentStateA3);  // Apply the new state to A3
 
     delay(200);  // Debounce delay to avoid multiple toggles from the same short
   }
@@ -172,8 +172,8 @@ void loop() {
       displaySettingsMenu();
     }else if (inStartMode) {
       // Turn off both relays
-      digitalWrite(PumpCloseRelay, LOW);
-      digitalWrite(PumpOpenRelay, LOW);
+      digitalWrite(RELAY1_PIN, LOW);
+      digitalWrite(RELAY2_PIN, LOW);
       lcd.clear();
       lcd.print("Relays OFF");
       delay(1000);
@@ -198,7 +198,7 @@ void enterStartMode() {
     lcd.clear();
     lcd.print(" Machine started ");
     delay(500);
-    // digitalWrite(MainMotorRelayA2Pin, LOW);  // Set A2 to LOW when start mode is entered
+    // digitalWrite(A2_PIN, LOW);  // Set A2 to LOW when start mode is entered
   } else {
     // Stop the system and set A2 to HIGH
     stopSystem();
@@ -206,9 +206,9 @@ void enterStartMode() {
 }
 
 void stopSystem() {
-  digitalWrite(MainMotorRelayA2Pin, LOW);
-  digitalWrite(PumpCloseRelay, LOW);
-  digitalWrite(PumpOpenRelay, LOW);
+  digitalWrite(A2_PIN, LOW);
+  digitalWrite(RELAY1_PIN, LOW);
+  digitalWrite(RELAY2_PIN, LOW);
   inStartMode = false;
   inMainMenu = true;
   lcd.clear();
@@ -308,16 +308,15 @@ float remainingDelayTime = 0.0;    // Remaining delay time before Relay 2 turns 
 
 void handleStartMode() {
   static bool delayTimerStarted = false;
-  static bool IsPumpClose = false;
-  static bool IsPumpOn = false;
+  static bool relay1Completed = false;
+  static bool relay2Started = false;
   static bool cycleCompleted = false;
   static bool metalDetected = false;    // Metal detection flag
   static bool cycleInProgress = false;  // Flag to track if the cycle is in progress
-  digitalWrite(MainMotorRelayA2Pin, HIGH);            // Set A2 to LOW when start mode is entered
+  digitalWrite(A2_PIN, HIGH);            // Set A2 to LOW when start mode is entered
 
   // Check for metal detection using the PNP sensor pin
-  // if (digitalRead(PNP_SENSOR_PIN) == HIGH) {  // Metal detected
-  if (analogRead(PNP_SENSOR_PIN) > (3.0 / 5.0) * 1023) {  // Metal detected
+  if (digitalRead(PNP_SENSOR_PIN) == HIGH) {  // Metal detected
     metalDetected = true;
   }
 
@@ -328,16 +327,16 @@ void handleStartMode() {
     metalDetected = false;   // Reset the metal detection flag
 
     // Reset all flags and states to restart the cycle
-    IsPumpClose = false;
-    IsPumpOn = false;
+    relay1Completed = false;
+    relay2Started = false;
     cycleCompleted = false;
     delayTimerStarted = false;
     isRelay1Active = false;
-    digitalWrite(PumpCloseRelay, LOW);  // Turn off Relay 1
-    digitalWrite(PumpOpenRelay, LOW);  // Turn off Relay 2
+    digitalWrite(RELAY1_PIN, LOW);  // Turn off Relay 1
+    digitalWrite(RELAY2_PIN, LOW);  // Turn off Relay 2
 
     // Start the cycle from Relay 1
-    digitalWrite(PumpCloseRelay, HIGH);     // Turn on Relay 1
+    digitalWrite(RELAY1_PIN, HIGH);     // Turn on Relay 1
     relay1StartTime = millis();        // Note start time for Relay 1
     delayStartTime = relay1StartTime;  // Start delay timer simultaneously
     isRelay1Active = true;
@@ -347,7 +346,7 @@ void handleStartMode() {
     lcd.clear();
     lcd.print("Pressure Close ");
     lcd.setCursor(13, 0);
-    lcd.print(SetPumpOnTime, 1);
+    lcd.print(setR1Time, 1);
     lcd.setCursor(0, 1);
     lcd.print("Delay Time     ");  // Show "Delay Time" on line 2
     lcd.setCursor(13, 1);
@@ -355,9 +354,9 @@ void handleStartMode() {
   }
 
   // Step 2: If Relay 1 is running, handle Relay 1 timing
-  if (isRelay1Active && !IsPumpClose && !cycleCompleted) {
+  if (isRelay1Active && !relay1Completed && !cycleCompleted) {
     float elapsedR1 = (millis() - relay1StartTime) / 1000.0;
-    float remainingR1 = SetPumpOnTime - elapsedR1;
+    float remainingR1 = setR1Time - elapsedR1;
 
     // Update LCD for Relay 1 status
     lcd.setCursor(13, 0);
@@ -365,9 +364,9 @@ void handleStartMode() {
 
     // Step 3: Turn off Relay 1 when its timer completes
     if (remainingR1 <= 0 && isRelay1Active) {
-      digitalWrite(PumpCloseRelay, LOW);
+      digitalWrite(RELAY1_PIN, LOW);
       isRelay1Active = false;
-      IsPumpClose = true;
+      relay1Completed = true;
 
       // Display R1 OFF, delay countdown
       lcd.clear();
@@ -389,24 +388,24 @@ void handleStartMode() {
     lcd.print(remainingDelayTime > 0 ? remainingDelayTime : 0.0, 1);
 
     // Step 5: Start Relay 2 when delay completes
-    if (remainingDelayTime <= 0 && IsPumpClose && !IsPumpOn) {
+    if (remainingDelayTime <= 0 && relay1Completed && !relay2Started) {
       delayTimerStarted = false;      // Stop delay timer
-      digitalWrite(PumpOpenRelay, HIGH);  // Turn on Relay 2
+      digitalWrite(RELAY2_PIN, HIGH);  // Turn on Relay 2
       relay2DelayTime = millis();     // Note start time for Relay 2
-      IsPumpOn = true;
+      relay2Started = true;
 
       // Display R2 ON status
       lcd.clear();
       lcd.print("Pressure ON");
       lcd.setCursor(13, 0);
-      lcd.print(SetPumpOfTime, 1);  // Show Relay 2 time (same as R1)
+      lcd.print(setR3Time, 1);  // Show Relay 2 time (same as R1)
     }
   }
 
   // Step 6: Track Relay 2’s remaining time
-  if (IsPumpOn) {
+  if (relay2Started) {
     float elapsedR2 = (millis() - relay2DelayTime) / 1000.0;
-    float remainingR2 = SetPumpOfTime - elapsedR2;
+    float remainingR2 = setR3Time - elapsedR2;
 
     // Update LCD for Relay 2 status
     lcd.setCursor(13, 0);
@@ -414,8 +413,8 @@ void handleStartMode() {
 
     // Step 7: Turn off Relay 2 and end the cycle when R2's time completes
     if (remainingR2 <= 0) {
-      digitalWrite(PumpOpenRelay, LOW);  // Turn off Relay 2
-      IsPumpOn = false;
+      digitalWrite(RELAY2_PIN, LOW);  // Turn off Relay 2
+      relay2Started = false;
       cycleCompleted = true;    // Mark cycle as completed
       cycleInProgress = false;  // Reset cycle in progress flag
 
@@ -430,16 +429,16 @@ void handleStartMode() {
   if (metalDetected && cycleCompleted) {
     // Reset the entire cycle
     cycleInProgress = false;  // Mark that cycle is not in progress
-    IsPumpClose = false;
-    IsPumpOn = false;
+    relay1Completed = false;
+    relay2Started = false;
     cycleCompleted = false;
     delayTimerStarted = false;
     isRelay1Active = false;
-    digitalWrite(PumpCloseRelay, LOW);  // Turn off Relay 1
-    digitalWrite(PumpOpenRelay, LOW);  // Turn off Relay 2
+    digitalWrite(RELAY1_PIN, LOW);  // Turn off Relay 1
+    digitalWrite(RELAY2_PIN, LOW);  // Turn off Relay 2
 
     // Restart the cycle (from Relay 1)
-    digitalWrite(PumpCloseRelay, HIGH);     // Turn on Relay 1
+    digitalWrite(RELAY1_PIN, HIGH);     // Turn on Relay 1
     relay1StartTime = millis();        // Note start time for Relay 1
     delayStartTime = relay1StartTime;  // Start delay timer simultaneously
     isRelay1Active = true;
@@ -449,7 +448,7 @@ void handleStartMode() {
     lcd.clear();
     lcd.print("Pressure ON");
     lcd.setCursor(13, 0);
-    lcd.print(SetPumpOnTime, 1);
+    lcd.print(setR1Time, 1);
     lcd.setCursor(0, 1);
     lcd.print("Delay Time     ");  // Show "Delay Time" on line 2
     lcd.setCursor(13, 1);
@@ -462,16 +461,16 @@ void handleStartMode() {
   if (metalDetected && cycleInProgress) {
     // Reset the entire cycle
     cycleInProgress = false;  // Mark that cycle is not in progress
-    IsPumpClose = false;
-    IsPumpOn = false;
+    relay1Completed = false;
+    relay2Started = false;
     cycleCompleted = false;
     delayTimerStarted = false;
     isRelay1Active = false;
-    digitalWrite(PumpCloseRelay, LOW);  // Turn off Relay 1
-    digitalWrite(PumpOpenRelay, LOW);  // Turn off Relay 2
+    digitalWrite(RELAY1_PIN, LOW);  // Turn off Relay 1
+    digitalWrite(RELAY2_PIN, LOW);  // Turn off Relay 2
 
     // Restart the cycle (from Relay 1)
-    digitalWrite(PumpCloseRelay, HIGH);     // Turn on Relay 1
+    digitalWrite(RELAY1_PIN, HIGH);     // Turn on Relay 1
     relay1StartTime = millis();        // Note start time for Relay 1
     delayStartTime = relay1StartTime;  // Start delay timer simultaneously
     isRelay1Active = true;
@@ -481,7 +480,7 @@ void handleStartMode() {
     lcd.clear();
     lcd.print("Pressure ON");
     lcd.setCursor(13, 0);
-    lcd.print(SetPumpOnTime, 1);
+    lcd.print(setR1Time, 1);
     lcd.setCursor(0, 1);
     lcd.print("Delay Time     ");  // Show "Delay Time" on line 2
     lcd.setCursor(13, 1);
@@ -510,22 +509,22 @@ void displaySetR1() {
   lcd.clear();
   lcd.print("Set Press. C Time:");
   lcd.setCursor(0, 1);
-  lcd.print(SetPumpOnTime, 1);
+  lcd.print(setR1Time, 1);
   lcd.print(" sec");
 }
 
 void handleSetR1(int buttonValue) {
   if (buttonValue < buttonValues[1] && !buttonPressed) {
-    SetPumpOnTime += stepSize;
-    if (SetPumpOnTime > 99.9) SetPumpOnTime = 99.9;
+    setR1Time += stepSize;
+    if (setR1Time > 99.9) setR1Time = 99.9;
     displaySetR1();
   } else if (buttonValue < buttonValues[2] && !buttonPressed) {
-    SetPumpOnTime -= stepSize;
-    if (SetPumpOnTime < 0.0) SetPumpOnTime = 0.0;
+    setR1Time -= stepSize;
+    if (setR1Time < 0.0) setR1Time = 0.0;
     displaySetR1();
   } else if (buttonValue < buttonValues[4] && !buttonPressed) {
     buttonPressed = true;
-    EEPROM.put(EEPROM_ADDR_PUMP_ON_TIME, SetPumpOnTime);
+    EEPROM.put(EEPROM_ADDR_R1_TIME, setR1Time);
     lcd.clear();
     lcd.print("Successfully set");
     delay(2000);
@@ -569,25 +568,25 @@ void displaySetR3() {
   lcd.clear();
   lcd.print("Press. O Time:");
   lcd.setCursor(0, 1);
-  // lcd.print(SetPumpOfTime, 1);  // Display time with one decimal place
-  lcd.print(SetPumpOfTime, 1);  // Display time with one decimal place
+  // lcd.print(setR3time, 1);  // Display time with one decimal place
+  lcd.print(setR3Time, 1);  // Display time with one decimal place
 
   lcd.print(" sec");
 }
 
 void handleDelayR3(int buttonValue) {
   if (buttonValue < buttonValues[1] && !buttonPressed) {  // Up button
-    SetPumpOfTime += stepSize;
-    if (SetPumpOfTime > 99.9) SetPumpOfTime = 99.9;  // Max limit
+    setR3Time += stepSize;
+    if (setR3Time > 99.9) setR3Time = 99.9;  // Max limit
     displaySetR3();
   } else if (buttonValue < buttonValues[2] && !buttonPressed) {  // Down button
-    SetPumpOfTime -= stepSize;
-    if (SetPumpOfTime < 0.0) SetPumpOfTime = 0.0;  // Min limit
+    setR3Time -= stepSize;
+    if (setR3Time < 0.0) setR3Time = 0.0;  // Min limit
     displaySetR3();
   } else if (buttonValue < buttonValues[4] && !buttonPressed) {  // Select button
     buttonPressed = true;
     // Save time to EEPROM
-    EEPROM.put(EEPROM_ADDR_PUMP_OFF_TIME, SetPumpOfTime);
+    EEPROM.put(EEPROM_ADDR_R3_TIME, setR3Time);
     lcd.clear();
     lcd.print("Successfully set");
     delay(2000);
