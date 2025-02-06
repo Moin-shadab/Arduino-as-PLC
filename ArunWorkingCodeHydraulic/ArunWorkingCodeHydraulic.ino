@@ -12,8 +12,8 @@ const int BACKLIGHT = 10;
 const int BUTTON_PIN = A0;  // Button connected to A0 pin
 #define PNP_SENSOR_PIN A1
 // Relay pin definitions
-const int PumpCloseRelayD2Pin = 2;
-const int PumpOpenRelayD3Pin = 3;
+const int RELAY1_PIN = 2;
+const int RELAY2_PIN = 3;
 // Initialize the LCD with the interface pins
 LiquidCrystal lcd(LCD_RS, LCD_ENABLE, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
 // Button value thresholds
@@ -40,20 +40,20 @@ bool flag = false;                       // Track if Relay 2 is active
 unsigned long buttonPressStartTime = 0;  // Timer for long press
 bool longPressDetected = false;          // Flag for long press
 unsigned long relayDelayStartTime = 0;   // Timer for delay before Relay 2 activates
-const int MainMotorOnButtonD1Pin = 1;       // D1 pin for the external button
+const int EXTERNAL_BUTTON_PIN = 1;       // D1 pin for the external button
 float previousR1Time = -1.0;             // Initialize with a value that's unlikely to match the default value
 // EEPROM addresses for saving times
 const int EEPROM_ADDR_R1_TIME = 0;
 const int EEPROM_ADDR_DELAY_TIME = 4;  // Different EEPROM address for Set R2
 const int EEPROM_ADDR_R3_TIME = 8;  // Different EEPROM address for Set R2
-const int MainMotorRelayA2Pin = A2;              // Pin A2 for controlling an external device
+const int A2_PIN = A2;              // Pin A2 for controlling an external device
 // Menu items in the main menu
 char* menuItems[2] = { "1: Settings" };  // Add Settings option
 char* settingItems[4] = { "Press. C Time", "Delay Time", "Press. O Time", "Back" };
 int currentSettingSelection = 0;
 bool isCycleRunning = false;  // Flag to track if the cycle is running
-const int GarrariMotorOnButtonD0Pin = 0;         // Pin D0 to detect the short circuit
-const int GarrariMotorRelayA3Pin = A3;        // Pin A3 to toggle between HIGH and LOW
+const int D0_PIN = 0;         // Pin D0 to detect the short circuit
+const int A3_PIN = A3;        // Pin A3 to toggle between HIGH and LOW
 bool previousD0State = HIGH;  // To store the previous state of D0
 bool currentStateA3 = LOW;   // The current state of A3 (starting as LOW)
 
@@ -62,17 +62,17 @@ void setup() {
   lcd.begin(16, 2);
   pinMode(BACKLIGHT, OUTPUT);
   digitalWrite(BACKLIGHT, HIGH);
-  pinMode(PumpCloseRelayD2Pin, OUTPUT);
-  pinMode(PumpOpenRelayD3Pin, OUTPUT);
+  pinMode(RELAY1_PIN, OUTPUT);
+  pinMode(RELAY2_PIN, OUTPUT);
   pinMode(PNP_SENSOR_PIN, INPUT);              // Set PNP sensor pin as input
-  pinMode(MainMotorOnButtonD1Pin, INPUT_PULLUP);  // External button pin (with internal pull-up resistor)
-  pinMode(MainMotorRelayA2Pin, OUTPUT);
-  digitalWrite(MainMotorRelayA2Pin, LOW);  // A2 pin set as output
-  digitalWrite(PumpCloseRelayD2Pin, LOW);
-  digitalWrite(PumpOpenRelayD3Pin, LOW);
-  pinMode(GarrariMotorOnButtonD0Pin, INPUT_PULLUP);         // Set D0 as an input with pull-up resistor enabled
-  pinMode(GarrariMotorRelayA3Pin, OUTPUT);               // Set A3 as an output
-  digitalWrite(GarrariMotorRelayA3Pin, currentStateA3);  // Initialize A3 to LOW
+  pinMode(EXTERNAL_BUTTON_PIN, INPUT_PULLUP);  // External button pin (with internal pull-up resistor)
+  pinMode(A2_PIN, OUTPUT);
+  digitalWrite(A2_PIN, LOW);  // A2 pin set as output
+  digitalWrite(RELAY1_PIN, LOW);
+  digitalWrite(RELAY2_PIN, LOW);
+  pinMode(D0_PIN, INPUT_PULLUP);         // Set D0 as an input with pull-up resistor enabled
+  pinMode(A3_PIN, OUTPUT);               // Set A3 as an output
+  digitalWrite(A3_PIN, currentStateA3);  // Initialize A3 to LOW
   // Scroll text "AUMAUTOMATION ENGINEERING" for 2 seconds
   lcd.clear();
   lcd.print("AUMAUTOMATION Engg.");
@@ -104,13 +104,13 @@ void setup() {
 
 void loop() {
   int buttonValue = analogRead(BUTTON_PIN);
-  int externalButtonState = digitalRead(MainMotorOnButtonD1Pin);  // Read external button state (D1)
-  bool currentD0State = digitalRead(GarrariMotorOnButtonD0Pin);                   // Read the current state of D0
+  int externalButtonState = digitalRead(EXTERNAL_BUTTON_PIN);  // Read external button state (D1)
+  bool currentD0State = digitalRead(D0_PIN);                   // Read the current state of D0
   // Check if D0 is being shorted to GND (i.e., D0 goes LOW)
   if (previousD0State == HIGH && currentD0State == LOW) {
     // D0 was just shorted, toggle A3
     currentStateA3 = !currentStateA3;      // Toggle the state of A3
-    digitalWrite(GarrariMotorRelayA3Pin, currentStateA3);  // Apply the new state to A3
+    digitalWrite(A3_PIN, currentStateA3);  // Apply the new state to A3
 
     delay(200);  // Debounce delay to avoid multiple toggles from the same short
   }
@@ -172,8 +172,8 @@ void loop() {
       displaySettingsMenu();
     }else if (inStartMode) {
       // Turn off both relays
-      digitalWrite(PumpCloseRelayD2Pin, LOW);
-      digitalWrite(PumpOpenRelayD3Pin, LOW);
+      digitalWrite(RELAY1_PIN, LOW);
+      digitalWrite(RELAY2_PIN, LOW);
       lcd.clear();
       lcd.print("Relays OFF");
       delay(1000);
@@ -198,7 +198,7 @@ void enterStartMode() {
     lcd.clear();
     lcd.print(" Machine started ");
     delay(500);
-    // digitalWrite(MainMotorRelayA2Pin, LOW);  // Set A2 to LOW when start mode is entered
+    // digitalWrite(A2_PIN, LOW);  // Set A2 to LOW when start mode is entered
   } else {
     // Stop the system and set A2 to HIGH
     stopSystem();
@@ -206,9 +206,9 @@ void enterStartMode() {
 }
 
 void stopSystem() {
-  digitalWrite(MainMotorRelayA2Pin, LOW);
-  digitalWrite(PumpCloseRelayD2Pin, LOW);
-  digitalWrite(PumpOpenRelayD3Pin, LOW);
+  digitalWrite(A2_PIN, LOW);
+  digitalWrite(RELAY1_PIN, LOW);
+  digitalWrite(RELAY2_PIN, LOW);
   inStartMode = false;
   inMainMenu = true;
   lcd.clear();
@@ -313,7 +313,7 @@ void handleStartMode() {
   static bool cycleCompleted = false;
   static bool metalDetected = false;    // Metal detection flag
   static bool cycleInProgress = false;  // Flag to track if the cycle is in progress
-  digitalWrite(MainMotorRelayA2Pin, HIGH);            // Set A2 to LOW when start mode is entered
+  digitalWrite(A2_PIN, HIGH);            // Set A2 to LOW when start mode is entered
 
   // Check for metal detection using the PNP sensor pin
   if (digitalRead(PNP_SENSOR_PIN) == HIGH) {  // Metal detected
@@ -332,11 +332,11 @@ void handleStartMode() {
     cycleCompleted = false;
     delayTimerStarted = false;
     isRelay1Active = false;
-    digitalWrite(PumpCloseRelayD2Pin, LOW);  // Turn off Relay 1
-    digitalWrite(PumpOpenRelayD3Pin, LOW);  // Turn off Relay 2
+    digitalWrite(RELAY1_PIN, LOW);  // Turn off Relay 1
+    digitalWrite(RELAY2_PIN, LOW);  // Turn off Relay 2
 
     // Start the cycle from Relay 1
-    digitalWrite(PumpCloseRelayD2Pin, HIGH);     // Turn on Relay 1
+    digitalWrite(RELAY1_PIN, HIGH);     // Turn on Relay 1
     relay1StartTime = millis();        // Note start time for Relay 1
     delayStartTime = relay1StartTime;  // Start delay timer simultaneously
     isRelay1Active = true;
@@ -364,7 +364,7 @@ void handleStartMode() {
 
     // Step 3: Turn off Relay 1 when its timer completes
     if (remainingR1 <= 0 && isRelay1Active) {
-      digitalWrite(PumpCloseRelayD2Pin, LOW);
+      digitalWrite(RELAY1_PIN, LOW);
       isRelay1Active = false;
       relay1Completed = true;
 
@@ -390,7 +390,7 @@ void handleStartMode() {
     // Step 5: Start Relay 2 when delay completes
     if (remainingDelayTime <= 0 && relay1Completed && !relay2Started) {
       delayTimerStarted = false;      // Stop delay timer
-      digitalWrite(PumpOpenRelayD3Pin, HIGH);  // Turn on Relay 2
+      digitalWrite(RELAY2_PIN, HIGH);  // Turn on Relay 2
       relay2DelayTime = millis();     // Note start time for Relay 2
       relay2Started = true;
 
@@ -413,7 +413,7 @@ void handleStartMode() {
 
     // Step 7: Turn off Relay 2 and end the cycle when R2's time completes
     if (remainingR2 <= 0) {
-      digitalWrite(PumpOpenRelayD3Pin, LOW);  // Turn off Relay 2
+      digitalWrite(RELAY2_PIN, LOW);  // Turn off Relay 2
       relay2Started = false;
       cycleCompleted = true;    // Mark cycle as completed
       cycleInProgress = false;  // Reset cycle in progress flag
@@ -434,11 +434,11 @@ void handleStartMode() {
     cycleCompleted = false;
     delayTimerStarted = false;
     isRelay1Active = false;
-    digitalWrite(PumpCloseRelayD2Pin, LOW);  // Turn off Relay 1
-    digitalWrite(PumpOpenRelayD3Pin, LOW);  // Turn off Relay 2
+    digitalWrite(RELAY1_PIN, LOW);  // Turn off Relay 1
+    digitalWrite(RELAY2_PIN, LOW);  // Turn off Relay 2
 
     // Restart the cycle (from Relay 1)
-    digitalWrite(PumpCloseRelayD2Pin, HIGH);     // Turn on Relay 1
+    digitalWrite(RELAY1_PIN, HIGH);     // Turn on Relay 1
     relay1StartTime = millis();        // Note start time for Relay 1
     delayStartTime = relay1StartTime;  // Start delay timer simultaneously
     isRelay1Active = true;
@@ -466,11 +466,11 @@ void handleStartMode() {
     cycleCompleted = false;
     delayTimerStarted = false;
     isRelay1Active = false;
-    digitalWrite(PumpCloseRelayD2Pin, LOW);  // Turn off Relay 1
-    digitalWrite(PumpOpenRelayD3Pin, LOW);  // Turn off Relay 2
+    digitalWrite(RELAY1_PIN, LOW);  // Turn off Relay 1
+    digitalWrite(RELAY2_PIN, LOW);  // Turn off Relay 2
 
     // Restart the cycle (from Relay 1)
-    digitalWrite(PumpCloseRelayD2Pin, HIGH);     // Turn on Relay 1
+    digitalWrite(RELAY1_PIN, HIGH);     // Turn on Relay 1
     relay1StartTime = millis();        // Note start time for Relay 1
     delayStartTime = relay1StartTime;  // Start delay timer simultaneously
     isRelay1Active = true;

@@ -169,29 +169,67 @@ void loop() {
   if (inSettingsMode) {
     unsigned long currentMillis = millis();
 
+    // Ensure settingIndex is within bounds
+    if (settingIndex < 0) settingIndex = 0;
+    if (settingIndex > 4) settingIndex = 4;
+
     // Display current setting based on settingIndex
-    if (settingIndex == 0) {
-      lcd.setCursor(0, 0);
-      lcd.print("1.Rs[Per/Bale]    ");
-      handleSetting(pricePerBaleArray);  // Handle Rs per Bale setting
-    } else if (settingIndex == 1) {
-      lcd.setCursor(0, 0);
-      lcd.print("2.Bale Eject     ");
-      handleBaleEjectSetting();  // Handle Bale Eject setting
-    } else if (settingIndex == 2) {
-      lcd.setCursor(0, 0);
-      lcd.print("3.Yarn Feeder    ");
-      handleYarnFeederSetting();  // Handle Yarn Feeder setting
-    } else if (settingIndex == 3) {
-      lcd.setCursor(0, 0);
-      lcd.print("4.Gain Factor    ");
-      handleGainFactorSetting();  // Handle Gain Factor setting
-    } else if (settingIndex == 4) {
-      lcd.setCursor(0, 0);
-      lcd.print("5.Siren Sound    ");
-      handleSirenSoundSetting();  // Handle Siren Sound setting
+    switch (settingIndex) {
+      case 0:
+        lcd.setCursor(0, 0);
+        lcd.print("1.Rs[Per/Bale]    ");
+        handleSetting(pricePerBaleArray);
+        break;
+      case 1:
+        lcd.setCursor(0, 0);
+        lcd.print("2.Bale Eject     ");
+        handleBaleEjectSetting();
+        break;
+      case 2:
+        lcd.setCursor(0, 0);
+        lcd.print("3.Yarn Feeder    ");
+        handleYarnFeederSetting();
+        break;
+      case 3:
+        lcd.setCursor(0, 0);
+        lcd.print("4.Gain Factor    ");
+        handleGainFactorSetting();
+        break;
+      case 4:
+        lcd.setCursor(0, 0);
+        lcd.print("5.Siren Sound    ");
+        handleSirenSoundSetting();
+        break;
     }
+  } else {
+    settingIndex = 0;  // Reset settingIndex when not in settings mode
   }
+  // if (inSettingsMode) {
+  //   unsigned long currentMillis = millis();
+
+  //   // Display current setting based on settingIndex
+  //   if (settingIndex == 0) {
+  //     lcd.setCursor(0, 0);
+  //     lcd.print("1.Rs[Per/Bale]    ");
+  //     handleSetting(pricePerBaleArray);  // Handle Rs per Bale setting
+  //   } else if (settingIndex == 1) {
+  //     lcd.setCursor(0, 0);
+  //     lcd.print("2.Bale Eject     ");
+  //     handleBaleEjectSetting();  // Handle Bale Eject setting
+  //   } else if (settingIndex == 2) {
+  //     lcd.setCursor(0, 0);
+  //     lcd.print("3.Yarn Feeder    ");
+  //     handleYarnFeederSetting();  // Handle Yarn Feeder setting
+  //   } else if (settingIndex == 3) {
+  //     lcd.setCursor(0, 0);
+  //     lcd.print("4.Gain Factor    ");
+  //     handleGainFactorSetting();  // Handle Gain Factor setting
+  //   } else if (settingIndex == 4) {
+  //     lcd.setCursor(0, 0);
+  //     lcd.print("5.Siren Sound    ");
+  //     handleSirenSoundSetting();  // Handle Siren Sound setting
+  //   }
+  // }
 
   saveTime();
 }
@@ -236,6 +274,10 @@ void handleSetting(int settingArray[]) {
         lcd.print(settingArray[i]);  // Print the other digits normally
       }
     }
+    lcd.setCursor(4, 1);  // Set cursor at column 4, row 1
+    for (int i = 4; i <= 10; i++) {
+      lcd.print(" ");  // Print blank spaces from column 4 to 10
+    }
   }
 
   // If Pin 10 is shorted to GND, increment the blinking digit
@@ -265,17 +307,17 @@ void handleSetting(int settingArray[]) {
     }
 
     settingIndex++;  // Move to the next setting
-    if (settingIndex > 4) {
-      settingIndex = 0;
-      dashboardMode = true;
-      inSettingsMode = false;
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("Setting Saved");
-      delay(2000);  // Wait for 2 seconds
-      lcd.clear();
-      loadSettingsFromEEPROM();
-    }
+    // if (settingIndex > 4) {
+    //   settingIndex = 0;
+    //   dashboardMode = true;
+    //   inSettingsMode = false;
+    //   lcd.clear();
+    //   lcd.setCursor(0, 0);
+    //   lcd.print("Setting Saved");
+    //   delay(2000);  // Wait for 2 seconds
+    //   lcd.clear();
+    //   loadSettingsFromEEPROM();
+    // }
     delay(500);  // Debounce delay
   }
 }
@@ -341,18 +383,18 @@ void handleBaleEjectSetting() {
     EEPROM.write(5, baleEjectArray[1]);
 
     settingIndex++;  // Move to the next setting
-    if (settingIndex > 4) {
-      settingIndex = 0;
-      dashboardMode = true;
-      inSettingsMode = false;
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("Setting Saved");
-      lcd.clear();
-      delay(2000);  // Wait for 2 seconds
-      lcd.clear();
-      showDashboardCurrentCount();
-    }
+    // if (settingIndex > 4) {
+    //   settingIndex = 0;
+    //   dashboardMode = true;
+    //   inSettingsMode = false;
+    //   lcd.clear();
+    //   lcd.setCursor(0, 0);
+    //   lcd.print("Setting Saved");
+    //   lcd.clear();
+    //   delay(2000);  // Wait for 2 seconds
+    //   lcd.clear();
+    //   showDashboardCurrentCount();
+    // }
     delay(500);  // Debounce delay
     lcd.clear();
   }
@@ -419,17 +461,17 @@ void handleYarnFeederSetting() {
     EEPROM.write(7, yarnFeederArray[1]);
 
     settingIndex++;  // Move to the next setting
-    if (settingIndex > 4) {
-      settingIndex = 0;
-      dashboardMode = true;
-      inSettingsMode = false;
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("Setting Saved");
-      delay(2000);  // Wait for 2 seconds
-      lcd.clear();
-      lcdCleared = false;  // Reset LCD cleared flag when returning to dashboard
-    }
+    // if (settingIndex > 4) {
+    //   settingIndex = 0;
+    //   dashboardMode = true;
+    //   inSettingsMode = false;
+    //   lcd.clear();
+    //   lcd.setCursor(0, 0);
+    //   lcd.print("Setting Saved");
+    //   delay(2000);  // Wait for 2 seconds
+    //   lcd.clear();
+    //   lcdCleared = false;  // Reset LCD cleared flag when returning to dashboard
+    // }
     delay(500);  // Debounce delay
   }
 }
@@ -477,16 +519,16 @@ void handleGainFactorSetting() {
     EEPROM.write(8, gainFactorArray[0]);
 
     settingIndex++;  // Move to the next setting
-    if (settingIndex > 4) {
-      settingIndex = 0;
-      dashboardMode = true;
-      inSettingsMode = false;
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("Setting Saved");
-      delay(2000);  // Wait for 2 seconds
-      lcd.clear();
-    }
+    // if (settingIndex > 4) {
+    //   settingIndex = 0;
+    //   dashboardMode = true;
+    //   inSettingsMode = false;
+    //   lcd.clear();
+    //   lcd.setCursor(0, 0);
+    //   lcd.print("Setting Saved");
+    //   delay(2000);  // Wait for 2 seconds
+    //   lcd.clear();
+    // }
     delay(500);  // Debounce delay
   }
 }
@@ -884,8 +926,8 @@ uint16_t restoreCycleCount() {
   return restoredCount;
 }
 
-void saveTime(){
-    DateTime now = rtc.now();  // Get current time from RTC
+void saveTime() {
+  DateTime now = rtc.now();  // Get current time from RTC
   // Calculate hours and minutes
   int hours = now.hour();
   int minutes = now.minute();
